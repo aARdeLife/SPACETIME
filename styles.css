@@ -9,6 +9,7 @@ body {
     margin: 0;
     overflow: hidden;
 }
+
 #title-container {
     position: absolute;
     top: 10px;
