@@ -1,167 +1,75 @@
-const video = document.getElementById('video');
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
-const summaryBox = document.createElement('div');
-const switchCameraButton = document.getElementById('switch-camera');
+const dialContainer = document.getElementById('dial-container');
+const dial = document.getElementById('dial');
+const dialMiddle = document.getElementById('dial-middle');
+const dialBackground = document.querySelector('.dial-background');
 
-summaryBox.style.position = 'absolute';
-summaryBox.style.padding = '10px';
-summaryBox.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-summaryBox.style.color = 'white';
-summaryBox.style.borderRadius = '5px';
-summaryBox.style.fontSize = '14px';
-summaryBox.style.maxWidth = '250px';
-summaryBox.style.display = 'none';
+let dragging = false;
+let angle = 0;
 
-document.body.appendChild(summaryBox);
-
-let currentStream;
-
-async function setupCamera(deviceId = null) {
-    if (currentStream) {
-        currentStream.getTracks().forEach(track => {
-            track.stop();
-        });
-    }
-
-    const constraints = {
-        video: {
-            width: 640,
-            height: 480,
-            deviceId: deviceId ? { exact: deviceId } : undefined
-        },
-        audio: false
-    };
-
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
-    currentStream = stream;
-    video.srcObject = stream;
-   video.onloadedmetadata = () => {
-    canvas.width = video.clientWidth;
-    canvas.height = video.clientHeight;
+dial.onmousedown = (event) => {
+  event.preventDefault();
+  dragging = true;
 };
 
+document.onmouseup = () => {
+  if (dragging) {
+    setTimeout(() => {
+      dragging = false;
+      angle = 0;
+      dial.style.transform = `rotate(${angle}deg)`;
+      if (dialMiddle.style.display !== 'none') {
+        dialMiddle.style.transform = `rotate(${angle}deg)`;
+      }
+      if (dialBackground.style.display !== 'none') {
+        dialBackground.style.transform = `rotate(${angle}deg)`;
+      }
+    }, 100);
+  }
+};
 
+document.onmousemove = (event) => {
+  if (dragging) {
+    const rect = dial.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const mouseX = event.clientX;
+    const mouseY = event.clientY;
 
-    return new Promise((resolve) => {
-        video.onloadeddata = () => {
-            resolve(video);
-        };
-    });
-}
-
-switchCameraButton.addEventListener('click', async () => {
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const videoDevices = devices.filter(device => device.kind === 'videoinput');
-    const currentDevice = videoDevices.find(device => device.deviceId === currentStream.getVideoTracks()[0].getSettings().deviceId);
-    const nextDeviceIndex = (videoDevices.indexOf(currentDevice) + 1) % videoDevices.length;
-    const nextDevice = videoDevices[nextDeviceIndex];
-    await setupCamera(nextDevice.deviceId);
-    video.play();
-    detectObjects(); // Restart object detection after switching camera
-});
-
-
-function isPointInRect(x, y, rect) {
-    return x >= rect[0] && x <= rect[0] + rect[2] && y >= rect[1] && y <= rect[1] + rect[3];
-}
-
-async function fetchWikipediaSummary(title) {
-    const response = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`);
-    if (response.ok) {
-        const data = await response.json();
-        return data.extract;
-    } else {
-        return 'No summary available';
+    angle = Math.atan2(mouseY - centerY, mouseX - centerX) * (180 / Math.PI);
+    dial.style.transform = `rotate(${angle}deg)`;
+    if (dialMiddle.style.display !== 'none') {
+      dialMiddle.style.transform = `rotate(${angle}deg)`;
     }
-}
-
-canvas.addEventListener('click', async event => {
-    const rect = canvas.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-
-    for (const prediction of currentPredictions) {
-        if (isPointInRect(x, y, prediction.bbox)) {
-            const summary = await fetchWikipediaSummary(prediction.class);
-            summaryBox.style.display = 'block';
-            summaryBox.style.left = `${prediction.bbox[0] + prediction.bbox[2]}px`;
-            summaryBox.style.top = `${prediction.bbox[1]}px`;
-            summaryBox.textContent = summary;
-            return;
-        }
+    if (dialBackground.style.display !== 'none') {
+      dialBackground.style.transform = `rotate(${angle}deg)`;
     }
+  }
+};
 
-    summaryBox.style.display = 'none';
+let doubleClickTimeout;
+
+dial.ondblclick = () => {
+  if (doubleClickTimeout) {
+    clearTimeout(doubleClickTimeout);
+  }
+  doubleClickTimeout = setTimeout(() => {
+    dialMiddle.style.display = dialMiddle.style.display === 'none' ? 'block' : 'none';
+  }, 300);
+};
+
+dialMiddle.ondblclick = () => {
+  if (doubleClickTimeout) {
+    clearTimeout(doubleClickTimeout);
+  }
+  doubleClickTimeout = setTimeout(() => {
+    dialBackground.style.display = dialBackground.style.display === 'none' ? 'block' : 'none';
+  }, 300);
+};
+
+document.addEventListener('click', (event) => {
+  if (!dialContainer.contains(event.target)) {
+    dialMiddle.style.display = 'none';
+    dialBackground.style.display = 'none';
+  }
 });
-
-function getColorBySize(bbox) {
-    const area = bbox[2] * bbox[3];
-    const maxArea = canvas.width * canvas.height;
-    const ratio = area / maxArea;
-
-    const red = 255;
-    const green = Math.floor(255 * ratio);
-const blue = 0;
-
-return `rgb(${red}, ${green}, ${blue})`;
-}
-
-async function drawPredictions(predictions) {
-ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-ctx.font = '16px sans-serif';
-ctx.textBaseline = 'top';
-
-predictions.forEach(prediction => {
-    const x = prediction.bbox[0];
-    const y = prediction.bbox[1];
-    const width = prediction.bbox[2];
-    const height = prediction.bbox[3];
-
-    ctx.strokeStyle = getColorBySize(prediction.bbox);
-    ctx.lineWidth = 2;
-    ctx.strokeRect(x, y, width, height);
-
-    ctx.fillStyle = getColorBySize(prediction.bbox);
-    ctx.fillText(prediction.class, x, y);
-});
-}
-
-let currentPredictions = [];
-
-const speakButton = document.getElementById('speak');
-
-function speak(text) {
-    const utterance = new SpeechSynthesisUtterance(text);
-    window.speechSynthesis.speak(utterance);
-}
-
-speakButton.addEventListener('click', () => {
-    if (currentPredictions.length > 0) {
-        // Speak the class of the first detected object
-        speak(currentPredictions[0].class);
-    } else {
-        // Speak a message if no objects are detected
-        speak('No objects detected');
-    }
-});
-
-
-async function detectObjects() {
-const model = await cocoSsd.load();
-
-async function detectFrame() {
-    currentPredictions = await model.detect(video);
-    drawPredictions(currentPredictions);
-    requestAnimationFrame(detectFrame);
-}
-
-detectFrame();
-}
-
-(async function() {
-const videoElement = await setupCamera();
-videoElement.play();
-detectObjects();
-})();
 
