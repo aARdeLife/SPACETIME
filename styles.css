@@ -60,13 +60,13 @@ button {
 #switch-camera {
     bottom: 10px;
     left: 45%;
-    transform: translateX(-50%);
+    transform: translateX(-10%);
 }
 
 #speak {
     top: 10px;
     left: 50%;
-    transform: translateX(-50%);
+    transform: translateX(-10%);
 }
 
 button:hover {
